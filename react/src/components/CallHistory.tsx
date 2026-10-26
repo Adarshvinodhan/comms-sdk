@@ -1,4 +1,4 @@
-import type { Call } from '@comms/sdk';
+import type { Call } from '@sminfotech/comms-sdk';
 import type { ReactElement } from 'react';
 import { useCallHistory } from '../hooks.js';
 import { useComms } from '../provider.js';

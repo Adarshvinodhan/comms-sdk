@@ -25,4 +25,4 @@ export { CallLayer, type CallLayerClassNames, type CallLayerProps } from './comp
 export { DmInbox, type DmInboxClassNames, type DmInboxProps } from './components/DmInbox.js';
 export { DmThread, type DmThreadClassNames, type DmThreadProps } from './components/DmThread.js';
 export { formatDuration, initials, timeShort, type CommsStyle } from './util.js';
-export type * from '@comms/sdk';
+export type * from '@sminfotech/comms-sdk';

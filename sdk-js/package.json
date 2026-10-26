@@ -1,17 +1,17 @@
 {
-  "name": "@comms/sdk",
+  "name": "@sminfotech/comms-sdk",
   "version": "0.1.0",
   "description": "Framework-agnostic client for the comms service: DMs, presence, read receipts and LiveKit-backed calls.",
   "license": "MIT",
   "author": "legpieze",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Adarshvinodhan/live-kit.git",
-    "directory": "packages/sdk-js"
+    "url": "git+https://github.com/Adarshvinodhan/comms-sdk.git",
+    "directory": "sdk-js"
   },
-  "homepage": "https://github.com/Adarshvinodhan/live-kit/tree/master/packages/sdk-js#readme",
+  "homepage": "https://github.com/Adarshvinodhan/comms-sdk/tree/main/sdk-js#readme",
   "bugs": {
-    "url": "https://github.com/Adarshvinodhan/live-kit/issues"
+    "url": "https://github.com/Adarshvinodhan/comms-sdk/issues"
   },
   "keywords": [
     "chat",

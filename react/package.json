@@ -1,17 +1,17 @@
 {
-  "name": "@comms/react",
+  "name": "@sminfotech/comms-react",
   "version": "0.1.0",
   "description": "React provider, hooks and components for the comms service: DM inbox and threads, ringing, and LiveKit audio/video calls.",
   "license": "MIT",
   "author": "legpieze",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Adarshvinodhan/live-kit.git",
-    "directory": "packages/react"
+    "url": "git+https://github.com/Adarshvinodhan/comms-sdk.git",
+    "directory": "react"
   },
-  "homepage": "https://github.com/Adarshvinodhan/live-kit/tree/master/packages/react#readme",
+  "homepage": "https://github.com/Adarshvinodhan/comms-sdk/tree/main/react#readme",
   "bugs": {
-    "url": "https://github.com/Adarshvinodhan/live-kit/issues"
+    "url": "https://github.com/Adarshvinodhan/comms-sdk/issues"
   },
   "keywords": [
     "react",
@@ -47,7 +47,7 @@
     "prepublishOnly": "npm run typecheck && npm run build"
   },
   "dependencies": {
-    "@comms/sdk": "^0.1.0"
+    "@sminfotech/comms-sdk": "^0.1.0"
   },
   "peerDependencies": {
     "@livekit/components-react": "^2.9.0",

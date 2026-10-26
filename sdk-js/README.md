@@ -1,13 +1,13 @@
-# @comms/sdk
+# @sminfotech/comms-sdk
 
 Framework-agnostic browser client for the comms service: direct messages, presence, typing, read receipts, and LiveKit-backed audio/video calls.
 
-Using React? Install [`@comms/react`](https://www.npmjs.com/package/@comms/react) instead. It wraps this client in a provider, hooks, and ready-made components.
+Using React? Install [`@sminfotech/comms-react`](https://www.npmjs.com/package/@sminfotech/comms-react) instead. It wraps this client in a provider, hooks, and ready-made components.
 
 ## Install
 
 ```bash
-npm install @comms/sdk
+npm install @sminfotech/comms-sdk
 ```
 
 ## How auth works
@@ -35,7 +35,7 @@ The response is a `CommsSession`: `{ user, chatToken, expiresAt, apiUrl, wsUrl }
 ## Usage
 
 ```ts
-import { CommsClient } from '@comms/sdk';
+import { CommsClient } from '@sminfotech/comms-sdk';
 
 const client = new CommsClient({
   getSession: () => fetch('/api/comms-session', { method: 'POST' }).then((r) => r.json()),
@@ -103,7 +103,7 @@ client.stop();
 Failed requests throw `CommsApiError` with `status`, `code` (for example `CALL_BUSY` or `UNAUTHORIZED`), `message`, and optional `details`. A `401` triggers one session refresh and retry before the error is thrown.
 
 ```ts
-import { CommsApiError } from '@comms/sdk';
+import { CommsApiError } from '@sminfotech/comms-sdk';
 
 try {
   await client.startCall(conversationId, 'VIDEO');

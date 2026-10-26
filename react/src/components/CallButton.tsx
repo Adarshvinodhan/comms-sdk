@@ -1,4 +1,4 @@
-import type { CallType, Conversation } from '@comms/sdk';
+import type { CallType, Conversation } from '@sminfotech/comms-sdk';
 import type { ReactElement, ReactNode } from 'react';
 import { useCall } from '../provider.js';
 import { cx, type CommsStyle } from '../util.js';

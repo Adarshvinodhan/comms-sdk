@@ -1,5 +1,5 @@
 /*
- * @comms/react styles. Every class is prefixed with `comms-`.
+ * @sminfotech/comms-react styles. Every class is prefixed with `comms-`.
  *
  * Theme by overriding the variables below. `<CommsProvider>` renders `.comms-root`
  * (display: contents, so it does not change layout). Set variables on `.comms-root`,

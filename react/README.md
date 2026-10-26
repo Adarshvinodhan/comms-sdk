@@ -1,25 +1,25 @@
-# @comms/react
+# @sminfotech/comms-react
 
 React provider, hooks, and components for the comms service: DM inbox and threads, presence, typing, read receipts, incoming-call ringing, and LiveKit audio/video calls.
 
-Built on [`@comms/sdk`](https://www.npmjs.com/package/@comms/sdk). Every component can be themed or restyled, and every component has a headless hook if you want your own markup.
+Built on [`@sminfotech/comms-sdk`](https://www.npmjs.com/package/@sminfotech/comms-sdk). Every component can be themed or restyled, and every component has a headless hook if you want your own markup.
 
 ## Install
 
 ```bash
-npm install @comms/react @livekit/components-react @livekit/components-styles livekit-client
+npm install @sminfotech/comms-react @livekit/components-react @livekit/components-styles livekit-client
 ```
 
 Requires React 18 or newer.
 
 ## Quick start
 
-Your backend creates the session with its tenant API key (see [How auth works](https://www.npmjs.com/package/@comms/sdk#how-auth-works)). The browser only ever receives the short-lived chat token.
+Your backend creates the session with its tenant API key (see [How auth works](https://www.npmjs.com/package/@sminfotech/comms-sdk#how-auth-works)). The browser only ever receives the short-lived chat token.
 
 ```tsx
 import '@livekit/components-styles';
-import '@comms/react/styles.css';
-import { CallLayer, CommsProvider, DmInbox, DmThread, type Conversation } from '@comms/react';
+import '@sminfotech/comms-react/styles.css';
+import { CallLayer, CommsProvider, DmInbox, DmThread, type Conversation } from '@sminfotech/comms-react';
 import { useState } from 'react';
 
 const getSession = () => fetch('/api/comms-session', { method: 'POST' }).then((r) => r.json());
@@ -78,7 +78,7 @@ Use these to build your own UI. They must be called inside `CommsProvider`.
 - `useMessages(conversation)` returns `{ messages, loading, hasOlder, loadOlder, send, edit, remove, setTyping, otherTyping, lastSeenOwnId }`. Sends are optimistic.
 - `useCall()` returns `{ state, historyVersion, start, accept, decline, hangup, rejoin }`. `state.phase` is `incoming`, `outgoing`, `in-call`, or `rejoin`.
 - `useCallHistory({ conversationId? })` returns `{ calls, loading, hasMore, loadMore }`.
-- `useCommsEvent(event, handler)` subscribes to any realtime event from `@comms/sdk`.
+- `useCommsEvent(event, handler)` subscribes to any realtime event from `@sminfotech/comms-sdk`.
 
 ## Styling
 
@@ -86,7 +86,7 @@ There are three levels. Use as many as you need.
 
 ### 1. Theme variables
 
-`CommsProvider` renders a `.comms-root` wrapper with `display: contents`, so it never affects your layout. Set `--comms-*` variables on it in a stylesheet loaded after `@comms/react/styles.css`:
+`CommsProvider` renders a `.comms-root` wrapper with `display: contents`, so it never affects your layout. Set `--comms-*` variables on it in a stylesheet loaded after `@sminfotech/comms-react/styles.css`:
 
 ```css
 .comms-root {
@@ -154,11 +154,11 @@ Every component accepts `className` and `style` for its root. The larger ones al
 | `CallLayer` | `backdrop`, `modal`, `pulse`, `actions`, `decline`, `accept`, `end`, `rejoin`, `screen`, `header`, `hangup`, `room` |
 | `Avatar` | `presence` |
 
-Your classes are added alongside the built-in `comms-*` classes. When both set the same property, the stylesheet loaded last wins, so import `@comms/react/styles.css` before your own CSS. With Tailwind you may need the `!` modifier for properties the default stylesheet already sets.
+Your classes are added alongside the built-in `comms-*` classes. When both set the same property, the stylesheet loaded last wins, so import `@sminfotech/comms-react/styles.css` before your own CSS. With Tailwind you may need the `!` modifier for properties the default stylesheet already sets.
 
 ### 3. Your own stylesheet
 
-Skip `@comms/react/styles.css` entirely and style the `comms-*` classes yourself. State classes are always present: `is-mine`, `is-theirs`, `is-failed`, `is-active`, `is-missed`, `is-online`, `is-offline`, and `is-system`.
+Skip `@sminfotech/comms-react/styles.css` entirely and style the `comms-*` classes yourself. State classes are always present: `is-mine`, `is-theirs`, `is-failed`, `is-active`, `is-missed`, `is-online`, `is-offline`, and `is-system`.
 
 For full control over markup, build on the hooks above.
 

@@ -10,7 +10,7 @@ import {
   type CommsEvents,
   type CommsSession,
   type CommsUser,
-} from '@comms/sdk';
+} from '@sminfotech/comms-sdk';
 import {
   createContext,
   useCallback,

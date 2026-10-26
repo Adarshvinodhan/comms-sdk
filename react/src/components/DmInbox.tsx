@@ -1,4 +1,4 @@
-import type { Conversation } from '@comms/sdk';
+import type { Conversation } from '@sminfotech/comms-sdk';
 import type { ReactElement } from 'react';
 import { useInbox } from '../hooks.js';
 import { useComms } from '../provider.js';
