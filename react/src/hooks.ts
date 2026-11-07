@@ -1,4 +1,4 @@
-import type { Call, Conversation, Message } from '@sminfotech/comms-sdk';
+import { reactionOf, type Call, type Conversation, type Message, type MessageReaction } from '@sminfotech/comms-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useComms, useCommsEvent } from './provider.js';
 
@@ -20,6 +20,8 @@ export interface MessagesState {
   /** Resolves true when the edit was saved. */
   edit: (messageId: string, body: string) => Promise<boolean>;
   remove: (messageId: string) => Promise<void>;
+  /** Toggles your reaction: sets `emoji`, or removes it when it already is your reaction. Optimistic. */
+  react: (messageId: string, emoji: string) => Promise<void>;
   setTyping: (isTyping: boolean) => void;
   otherTyping: boolean;
   /** Id of the newest own message the other user has read, for a "Seen" marker. */
@@ -66,6 +68,13 @@ export function useInbox(): InboxState {
   useCommsEvent('message.updated', reloadSoon);
   useCommsEvent('message.deleted', reloadSoon);
   useCommsEvent('conversation.read', reloadSoon);
+  useCommsEvent('message.reaction', (r) =>
+    setConversations((list) =>
+      list.map((c) =>
+        c.lastMessage?.id === r.messageId ? { ...c, lastMessage: { ...c.lastMessage, reactions: r.reactions } } : c,
+      ),
+    ),
+  );
   useCommsEvent('presence', (p) =>
     setConversations((list) =>
       list.map((c) =>
@@ -85,6 +94,19 @@ function upsert(list: ThreadMessage[], msg: ThreadMessage): ThreadMessage[] {
   return next;
 }
 
+function patchReactions(list: ThreadMessage[], messageId: string, reactions: MessageReaction[]): ThreadMessage[] {
+  return list.map((m) => (m.id === messageId ? { ...m, reactions } : m));
+}
+
+/** `reactions` with `userId`'s entry replaced in place, appended, or removed (`emoji: null`). */
+function withReaction(reactions: MessageReaction[], userId: string, emoji: string | null): MessageReaction[] {
+  if (emoji === null) return reactions.filter((r) => r.userId !== userId);
+  const reactedAt = new Date().toISOString();
+  return reactions.some((r) => r.userId === userId)
+    ? reactions.map((r) => (r.userId === userId ? { ...r, emoji, reactedAt } : r))
+    : [...reactions, { userId, emoji, reactedAt }];
+}
+
 /**
  * Headless DM thread: history with pagination, optimistic sends, edits, deletes,
  * typing indicator and read receipts. `DmThread` is built on this.
@@ -95,6 +117,8 @@ export function useMessages(conversation: Conversation): MessagesState {
   const otherId = conversation.otherUser.id;
 
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [otherTyping, setOtherTyping] = useState(false);
@@ -146,6 +170,9 @@ export function useMessages(conversation: Conversation): MessagesState {
   useCommsEvent('message.deleted', (msg) => {
     if (msg.conversationId === conversationId) setMessages((list) => upsert(list, msg));
   });
+  useCommsEvent('message.reaction', (r) => {
+    if (r.conversationId === conversationId) setMessages((list) => patchReactions(list, r.messageId, r.reactions));
+  });
   useCommsEvent('typing', (t) => {
     if (t.conversationId !== conversationId || t.userId !== otherId) return;
     setOtherTyping(t.isTyping);
@@ -171,6 +198,7 @@ export function useMessages(conversation: Conversation): MessagesState {
         body,
         metadata: {},
         clientMsgId,
+        reactions: [],
         createdAt: new Date().toISOString(),
         editedAt: null,
         deletedAt: null,
@@ -214,6 +242,24 @@ export function useMessages(conversation: Conversation): MessagesState {
     [client, notify],
   );
 
+  const react = useCallback(
+    async (messageId: string, emoji: string) => {
+      const msg = messagesRef.current.find((m) => m.id === messageId);
+      if (!msg) return;
+      const previous = msg.reactions;
+      const next = reactionOf(previous, me.id) === emoji ? null : emoji;
+      setMessages((list) => patchReactions(list, messageId, withReaction(previous, me.id, next)));
+      try {
+        const res = await client.react(messageId, next);
+        setMessages((list) => patchReactions(list, messageId, res.reactions));
+      } catch (e) {
+        setMessages((list) => patchReactions(list, messageId, previous));
+        notify({ kind: 'error', text: (e as Error).message });
+      }
+    },
+    [client, me.id, notify],
+  );
+
   const setTyping = useCallback((isTyping: boolean) => client.setTyping(conversationId, isTyping), [client, conversationId]);
 
   const lastSeenOwnId = otherLastReadAt
@@ -228,6 +274,7 @@ export function useMessages(conversation: Conversation): MessagesState {
     send,
     edit,
     remove,
+    react,
     setTyping,
     otherTyping,
     lastSeenOwnId,

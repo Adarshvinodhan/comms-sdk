@@ -12,7 +12,7 @@
  *
  * Parts accept `className` (the root) and `classNames` (inner nodes). State classes
  * `is-mine`, `is-theirs`, `is-failed`, `is-active`, `is-missed`, `is-online`,
- * and `is-offline` stay on the nodes so your CSS can target them.
+ * `is-offline` and `is-selected` stay on the nodes so your CSS can target them.
  */
 .comms-root {
   display: contents;
@@ -46,6 +46,10 @@
   --comms-badge-text: var(--comms-accent-text);
   --comms-link: #a5b4fc;
   --comms-input-bg: var(--comms-surface-2);
+  --comms-reaction-bg: var(--comms-surface-2);
+  --comms-reaction-border: var(--comms-border);
+  --comms-reaction-mine-border: var(--comms-accent);
+  --comms-reaction-picker-bg: var(--comms-surface);
 
   --comms-offline: #475569;
   --comms-failed: #7f1d1d;
@@ -270,6 +274,64 @@
 }
 .comms-meta {
   margin-top: 2px;
+}
+.comms-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: -6px 8px 0;
+  position: relative;
+}
+.comms-reaction {
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--comms-text);
+  background: var(--comms-reaction-bg);
+  border: 1px solid var(--comms-reaction-border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+.comms-reaction.is-mine {
+  border-color: var(--comms-reaction-mine-border);
+}
+.comms-reaction:disabled {
+  cursor: default;
+}
+.comms-reaction-count {
+  font-size: 11px;
+  color: var(--comms-muted);
+}
+.comms-reaction-picker {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: var(--comms-reaction-picker-bg);
+  border: 1px solid var(--comms-border);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 25%);
+}
+.comms-reaction-option {
+  font-size: 20px;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  padding: 5px;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.comms-reaction-option:hover,
+.comms-reaction-option:focus-visible {
+  transform: scale(1.2);
+}
+.comms-reaction-option.is-selected {
+  background: var(--comms-hover);
 }
 .comms-system-msg {
   align-self: center;

@@ -9,6 +9,13 @@ export interface CommsUser {
 
 export type MessageType = 'TEXT' | 'FILE' | 'SYSTEM';
 
+/** One user's reaction. A user has at most one reaction per message. */
+export interface MessageReaction {
+  userId: string;
+  emoji: string;
+  reactedAt: string;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -17,6 +24,8 @@ export interface Message {
   body: string | null;
   metadata: Record<string, unknown>;
   clientMsgId: string | null;
+  /** Oldest first. Always empty on deleted and system messages. */
+  reactions: MessageReaction[];
   createdAt: string;
   editedAt: string | null;
   deletedAt: string | null;
@@ -93,6 +102,16 @@ export interface TypingEvent {
   isTyping: boolean;
 }
 
+/** A reaction was set, changed or removed. `reactions` is the message's full list after the change. */
+export interface ReactionEvent {
+  conversationId: string;
+  messageId: string;
+  userId: string;
+  /** `null` when `userId` removed their reaction. */
+  emoji: string | null;
+  reactions: MessageReaction[];
+}
+
 export interface ReadEvent {
   conversationId: string;
   userId: string;
@@ -119,6 +138,7 @@ export interface CommsEvents {
   'message.new': Message;
   'message.updated': Message;
   'message.deleted': Message;
+  'message.reaction': ReactionEvent;
   typing: TypingEvent;
   'conversation.read': ReadEvent;
   presence: PresenceEvent;

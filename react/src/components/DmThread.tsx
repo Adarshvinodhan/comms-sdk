@@ -1,5 +1,5 @@
-import type { Conversation } from '@sminfotech/comms-sdk';
-import { useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { reactionOf, summarizeReactions, type Conversation } from '@sminfotech/comms-sdk';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { useMessages } from '../hooks.js';
 import { useComms } from '../provider.js';
 import { cx, timeShort, type CommsStyle } from '../util.js';
@@ -23,15 +23,24 @@ export interface DmThreadClassNames {
   input?: string;
   send?: string;
   edit?: string;
+  reactions?: string;
+  reaction?: string;
+  reactionPicker?: string;
+  reactionOption?: string;
   avatar?: string;
   audioCall?: string;
   videoCall?: string;
 }
 
+/** Quick-pick emoji shown by `DmThread`'s reaction picker. */
+export const DEFAULT_REACTIONS: readonly string[] = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
 export interface DmThreadProps {
   conversation: Conversation;
   /** Show audio/video call buttons in the header. Default true. */
   showCallButtons?: boolean;
+  /** Emoji offered in the reaction picker, or `false` to hide reacting (existing reactions still show). Default `DEFAULT_REACTIONS`. */
+  reactions?: readonly string[] | false;
   /** Extra content for the header, e.g. app-specific context. */
   headerExtra?: ReactNode;
   className?: string;
@@ -39,15 +48,50 @@ export interface DmThreadProps {
   classNames?: DmThreadClassNames;
 }
 
-export function DmThread({ conversation, showCallButtons = true, headerExtra, className, style, classNames }: DmThreadProps): ReactElement {
+export function DmThread({
+  conversation,
+  showCallButtons = true,
+  reactions: quickReactions = DEFAULT_REACTIONS,
+  headerExtra,
+  className,
+  style,
+  classNames,
+}: DmThreadProps): ReactElement {
   const { me, avatarColor } = useComms();
   const other = conversation.otherUser;
-  const { messages, loading, hasOlder, loadOlder, send, edit, remove, setTyping, otherTyping, lastSeenOwnId } =
+  const { messages, loading, hasOlder, loadOlder, send, edit, remove, react, setTyping, otherTyping, lastSeenOwnId } =
     useMessages(conversation);
 
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  const [picking, setPicking] = useState<string | null>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!picking) return;
+    pickerRef.current?.scrollIntoView({ block: 'nearest' });
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (!pickerRef.current?.contains(target) && !target?.closest('[data-comms-react-toggle]')) setPicking(null);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setPicking(null);
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [picking]);
+
+  function pick(messageId: string, emoji: string) {
+    setPicking(null);
+    void react(messageId, emoji);
+  }
+
+  function reactorNames(userIds: string[]): string {
+    return userIds.map((id) => (id === me.id ? 'You' : id === other.id ? other.displayName : 'Someone')).join(', ');
+  }
   const stickToBottom = useRef(true);
   const restoreFrom = useRef<number | null>(null);
 
@@ -123,6 +167,9 @@ export function DmThread({ conversation, showCallButtons = true, headerExtra, cl
             );
           }
           const mine = m.senderId === me.id;
+          const canReact = quickReactions !== false && !m.pending && !m.failed && !m.deletedAt;
+          const summary = summarizeReactions(m.reactions, me.id);
+          const myReaction = reactionOf(m.reactions, me.id);
           return (
             <div
               key={m.id}
@@ -159,9 +206,41 @@ export function DmThread({ conversation, showCallButtons = true, headerExtra, cl
                   {m.deletedAt ? <em className="comms-muted">Message deleted</em> : m.body}
                 </div>
               )}
+              {summary.length > 0 && (
+                <div className={cx('comms-reactions', classNames?.reactions)}>
+                  {summary.map((s) => (
+                    <button
+                      key={s.emoji}
+                      type="button"
+                      className={cx('comms-reaction', s.mine && 'is-mine', classNames?.reaction)}
+                      title={reactorNames(s.userIds)}
+                      aria-label={`${s.emoji} ${reactorNames(s.userIds)}`}
+                      aria-pressed={s.mine}
+                      disabled={!canReact}
+                      onClick={() => void react(m.id, s.emoji)}
+                    >
+                      {s.emoji}
+                      {s.count > 1 && <span className="comms-reaction-count">{s.count}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className={cx('comms-meta', 'comms-muted', 'comms-small', classNames?.meta)}>
                 {m.pending ? 'Sending…' : m.failed ? 'Failed to send' : timeShort(m.createdAt)}
                 {m.editedAt && !m.deletedAt && ' · edited'}
+                {canReact && editing?.id !== m.id && (
+                  <>
+                    {' · '}
+                    <button
+                      className="comms-link"
+                      data-comms-react-toggle=""
+                      aria-expanded={picking === m.id}
+                      onClick={() => setPicking((cur) => (cur === m.id ? null : m.id))}
+                    >
+                      react
+                    </button>
+                  </>
+                )}
                 {mine && !m.pending && !m.failed && !m.deletedAt && editing?.id !== m.id && (
                   <>
                     {' · '}
@@ -176,6 +255,26 @@ export function DmThread({ conversation, showCallButtons = true, headerExtra, cl
                 )}
                 {lastSeenOwnId === m.id && ' · Seen'}
               </div>
+              {canReact && picking === m.id && (
+                <div
+                  ref={pickerRef}
+                  role="group"
+                  aria-label="React to message"
+                  className={cx('comms-reaction-picker', classNames?.reactionPicker)}
+                >
+                  {quickReactions.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      className={cx('comms-reaction-option', myReaction === emoji && 'is-selected', classNames?.reactionOption)}
+                      aria-pressed={myReaction === emoji}
+                      onClick={() => pick(m.id, emoji)}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

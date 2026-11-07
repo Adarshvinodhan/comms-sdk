@@ -1,6 +1,6 @@
 # @sminfotech/comms-react
 
-React provider, hooks, and components for the comms service: DM inbox and threads, presence, typing, read receipts, incoming-call ringing, and LiveKit audio/video calls.
+React provider, hooks, and components for the comms service: DM inbox and threads, WhatsApp-style reactions, presence, typing, read receipts, incoming-call ringing, and LiveKit audio/video calls.
 
 Built on [`@sminfotech/comms-sdk`](https://www.npmjs.com/package/@sminfotech/comms-sdk). Every component can be themed or restyled, and every component has a headless hook if you want your own markup.
 
@@ -52,7 +52,7 @@ Mount `<CallLayer />` once, anywhere inside the provider. It shows the incoming-
 | --- | --- |
 | `CommsProvider` | Starts the client, keeps the socket and token alive, and provides context. Renders `fallback` until ready. |
 | `DmInbox` | Conversation list with avatar, last message preview, unread badge, and time. Calls `onSelect`. |
-| `DmThread` | One conversation: header, history with "Load older", composer, edit/delete, typing, "Seen", and call buttons. |
+| `DmThread` | One conversation: header, history with "Load older", composer, edit/delete, reactions, typing, "Seen", and call buttons. |
 | `CallLayer` | Incoming-call modal, rejoin prompt, and the LiveKit call screen. In-call chat is not saved. |
 | `CallButton` | Starts an audio or video call. Disabled while another call is in progress. |
 | `CallHistory` | Incoming and outgoing calls with status, duration, and time. |
@@ -69,13 +69,24 @@ Mount `<CallLayer />` once, anywhere inside the provider. It shows the incoming-
 | `fallback` | Rendered until the session is loaded. |
 | `className`, `style` | Applied to the `.comms-root` theme wrapper. |
 
+### Reactions in `DmThread`
+
+Each message has a **react** link that opens a quick picker. Reactions show as chips under the bubble, for example `👍` or `❤️ 2`. As in WhatsApp, each person has one reaction per message: picking another emoji replaces yours, and picking your current one (in the picker or by tapping your chip) removes it. Tapping the other person's chip reacts with the same emoji. Updates are optimistic and sync live to the other person.
+
+```tsx
+<DmThread conversation={active} reactions={['👍', '🔥', '🎉', '👀']} /> // your own quick set
+<DmThread conversation={active} reactions={false} />                   // show reactions, hide the picker
+```
+
+The default set is exported as `DEFAULT_REACTIONS` (`👍 ❤️ 😂 😮 😢 🙏`).
+
 ## Hooks
 
 Use these to build your own UI. They must be called inside `CommsProvider`.
 
 - `useComms()` returns `{ client, session, me, connected, notify, avatarColor, calls }`.
-- `useInbox()` returns `{ conversations, loading, reload }`, kept live for new messages, edits, reads, and presence.
-- `useMessages(conversation)` returns `{ messages, loading, hasOlder, loadOlder, send, edit, remove, setTyping, otherTyping, lastSeenOwnId }`. Sends are optimistic.
+- `useInbox()` returns `{ conversations, loading, reload }`, kept live for new messages, edits, reactions, reads, and presence.
+- `useMessages(conversation)` returns `{ messages, loading, hasOlder, loadOlder, send, edit, remove, react, setTyping, otherTyping, lastSeenOwnId }`. Sends and reactions are optimistic. `react(messageId, emoji)` toggles: it sets `emoji`, or removes it when it already is your reaction. Render `message.reactions` with `summarizeReactions(message.reactions, me.id)`, which is re-exported from `@sminfotech/comms-sdk`.
 - `useCall()` returns `{ state, historyVersion, start, accept, decline, hangup, rejoin }`. `state.phase` is `incoming`, `outgoing`, `in-call`, or `rejoin`.
 - `useCallHistory({ conversationId? })` returns `{ calls, loading, hasMore, loadMore }`.
 - `useCommsEvent(event, handler)` subscribes to any realtime event from `@sminfotech/comms-sdk`.
@@ -123,6 +134,7 @@ Set variables on a descendant to theme one area, for example a dark call screen:
 | Palette | `--comms-surface`, `--comms-surface-2`, `--comms-surface-3`, `--comms-border`, `--comms-text`, `--comms-muted`, `--comms-accent`, `--comms-accent-text`, `--comms-ok`, `--comms-danger`, `--comms-radius` |
 | Thread and inbox | `--comms-header`, `--comms-chat-bg`, `--comms-hover`, `--comms-active`, `--comms-active-border`, `--comms-link`, `--comms-input-bg`, `--comms-badge`, `--comms-badge-text` |
 | Bubbles | `--comms-bubble-mine`, `--comms-bubble-mine-text`, `--comms-bubble-theirs`, `--comms-bubble-theirs-text`, `--comms-bubble-radius`, `--comms-bubble-shadow`, `--comms-system-bg`, `--comms-system-text`, `--comms-failed` |
+| Reactions | `--comms-reaction-bg`, `--comms-reaction-border`, `--comms-reaction-mine-border`, `--comms-reaction-picker-bg` |
 | Avatar and presence | `--comms-avatar-size`, `--comms-avatar-bg`, `--comms-avatar-text`, `--comms-offline` |
 | Calls | `--comms-call-bg`, `--comms-backdrop`, `--comms-z-call`, `--comms-z-modal` |
 
@@ -148,7 +160,7 @@ Every component accepts `className` and `style` for its root. The larger ones al
 
 | Component | `classNames` keys |
 | --- | --- |
-| `DmThread` | `header`, `avatar`, `audioCall`, `videoCall`, `messages`, `loadOlder`, `empty`, `message`, `mine`, `theirs`, `failed`, `bubble`, `meta`, `system`, `typing`, `edit`, `composer`, `input`, `send` |
+| `DmThread` | `header`, `avatar`, `audioCall`, `videoCall`, `messages`, `loadOlder`, `empty`, `message`, `mine`, `theirs`, `failed`, `bubble`, `meta`, `system`, `typing`, `edit`, `reactions`, `reaction`, `reactionPicker`, `reactionOption`, `composer`, `input`, `send` |
 | `DmInbox` | `empty`, `item`, `itemActive`, `avatar`, `text`, `preview`, `badge` |
 | `CallHistory` | `empty`, `item`, `missed`, `more` |
 | `CallLayer` | `backdrop`, `modal`, `pulse`, `actions`, `decline`, `accept`, `end`, `rejoin`, `screen`, `header`, `hangup`, `room` |
@@ -158,7 +170,7 @@ Your classes are added alongside the built-in `comms-*` classes. When both set t
 
 ### 3. Your own stylesheet
 
-Skip `@sminfotech/comms-react/styles.css` entirely and style the `comms-*` classes yourself. State classes are always present: `is-mine`, `is-theirs`, `is-failed`, `is-active`, `is-missed`, `is-online`, `is-offline`, and `is-system`.
+Skip `@sminfotech/comms-react/styles.css` entirely and style the `comms-*` classes yourself. State classes are always present: `is-mine`, `is-theirs`, `is-failed`, `is-active`, `is-missed`, `is-online`, `is-offline`, `is-system`, and `is-selected`.
 
 For full control over markup, build on the hooks above.
 

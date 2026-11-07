@@ -1,7 +1,7 @@
 {
   "name": "@sminfotech/comms-sdk",
-  "version": "0.1.0",
-  "description": "Framework-agnostic client for the comms service: DMs, presence, read receipts and LiveKit-backed calls.",
+  "version": "0.2.0",
+  "description": "Framework-agnostic client for the comms service: DMs, reactions, presence, read receipts and LiveKit-backed calls.",
   "license": "MIT",
   "author": "legpieze",
   "repository": {

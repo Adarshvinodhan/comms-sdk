@@ -23,6 +23,7 @@ export { CallButton, type CallButtonProps } from './components/CallButton.js';
 export { CallHistory, type CallHistoryClassNames, type CallHistoryProps } from './components/CallHistory.js';
 export { CallLayer, type CallLayerClassNames, type CallLayerProps } from './components/CallLayer.js';
 export { DmInbox, type DmInboxClassNames, type DmInboxProps } from './components/DmInbox.js';
-export { DmThread, type DmThreadClassNames, type DmThreadProps } from './components/DmThread.js';
+export { DEFAULT_REACTIONS, DmThread, type DmThreadClassNames, type DmThreadProps } from './components/DmThread.js';
 export { formatDuration, initials, timeShort, type CommsStyle } from './util.js';
+export { reactionOf, summarizeReactions } from '@sminfotech/comms-sdk';
 export type * from '@sminfotech/comms-sdk';

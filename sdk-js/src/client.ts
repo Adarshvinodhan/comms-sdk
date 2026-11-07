@@ -11,6 +11,7 @@ import type {
   Conversation,
   Message,
   Page,
+  ReactionEvent,
 } from './types.js';
 
 export interface CommsClientOptions {
@@ -25,7 +26,7 @@ export interface CommsClientOptions {
   sendTimeoutMs?: number;
 }
 
-type Ack = { ok: true; data: Message } | { ok: false; error: { code: string; message: string } };
+type Ack<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
 type Listener<E extends CommsEventName> = (payload: CommsEvents[E]) => void;
 
 const REFRESH_MARGIN_MS = 60_000;
@@ -165,6 +166,19 @@ export class CommsClient {
     return parseResponse<T>(res);
   }
 
+  /** Emits over the socket and falls back to `viaRest` when disconnected or unacknowledged. `viaRest` must be safe to repeat. */
+  private emitOrRest<T>(event: string, payload: unknown, viaRest: () => Promise<T>): Promise<T> {
+    const socket = this.socket;
+    if (!socket?.connected) return viaRest();
+    return new Promise<T>((resolve, reject) => {
+      socket.timeout(this.options.sendTimeoutMs ?? 5000).emit(event, payload, (err: Error | null, res: Ack<T>) => {
+        if (!err && res?.ok) return resolve(res.data);
+        if (!err && res && !res.ok) return reject(Object.assign(new Error(res.error.message), { code: res.error.code }));
+        viaRest().then(resolve, reject);
+      });
+    });
+  }
+
   // ───────────────────────── Conversations & messages ─────────────────────────
 
   async inbox(): Promise<Conversation[]> {
@@ -191,19 +205,9 @@ export class CommsClient {
    * `clientMsgId` makes the retry safe: the server deduplicates on it.
    */
   sendMessage(conversationId: string, body: string, clientMsgId: string = crypto.randomUUID()): Promise<Message> {
-    const viaRest = () =>
-      this.request<Message>('POST', `/v1/conversations/${conversationId}/messages`, { body, clientMsgId });
-    const socket = this.socket;
-    if (!socket?.connected) return viaRest();
-    return new Promise<Message>((resolve, reject) => {
-      socket
-        .timeout(this.options.sendTimeoutMs ?? 5000)
-        .emit('message.send', { conversationId, body, clientMsgId }, (err: Error | null, res: Ack) => {
-          if (!err && res?.ok) return resolve(res.data);
-          if (!err && res && !res.ok) return reject(Object.assign(new Error(res.error.message), { code: res.error.code }));
-          viaRest().then(resolve, reject);
-        });
-    });
+    return this.emitOrRest<Message>('message.send', { conversationId, body, clientMsgId }, () =>
+      this.request('POST', `/v1/conversations/${conversationId}/messages`, { body, clientMsgId }),
+    );
   }
 
   editMessage(messageId: string, body: string): Promise<Message> {
@@ -212,6 +216,17 @@ export class CommsClient {
 
   deleteMessage(messageId: string): Promise<Message> {
     return this.request('DELETE', `/v1/messages/${messageId}`);
+  }
+
+  /**
+   * Sets your reaction to `emoji` (replacing any previous one), or removes it with `null`.
+   * Idempotent, so it sends over the socket and falls back to REST like `sendMessage`.
+   */
+  react(messageId: string, emoji: string | null): Promise<ReactionEvent> {
+    const path = `/v1/messages/${messageId}/reaction`;
+    return this.emitOrRest<ReactionEvent>('message.react', { messageId, emoji }, () =>
+      emoji === null ? this.request('DELETE', path) : this.request('PUT', path, { emoji }),
+    );
   }
 
   markRead(conversationId: string): Promise<{ conversationId: string; userId: string; lastReadAt: string }> {

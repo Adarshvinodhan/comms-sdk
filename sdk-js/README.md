@@ -1,6 +1,6 @@
 # @sminfotech/comms-sdk
 
-Framework-agnostic browser client for the comms service: direct messages, presence, typing, read receipts, and LiveKit-backed audio/video calls.
+Framework-agnostic browser client for the comms service: direct messages, reactions, presence, typing, read receipts, and LiveKit-backed audio/video calls.
 
 Using React? Install [`@sminfotech/comms-react`](https://www.npmjs.com/package/@sminfotech/comms-react) instead. It wraps this client in a provider, hooks, and ready-made components.
 
@@ -77,8 +77,27 @@ client.stop();
 - `messages(conversationId, { before?, limit? })` returns newest first. Pass `nextCursor` as `before` to page back.
 - `sendMessage(conversationId, body, clientMsgId?)` sends over the socket and falls back to REST. The server deduplicates on `clientMsgId`, so retries are safe.
 - `editMessage(messageId, body)`, `deleteMessage(messageId)`
+- `react(messageId, emoji | null)` sets your reaction, replacing any previous one, or removes it with `null`. One reaction per user per message, like WhatsApp. It is idempotent, so it sends over the socket and falls back to REST. Resolves to `{ conversationId, messageId, userId, emoji, reactions }`.
 - `markRead(conversationId)`
 - `setTyping(conversationId, isTyping)` is throttled, so it is safe to call on every keystroke.
+
+**Reactions**
+
+Every `Message` has `reactions: { userId, emoji, reactedAt }[]`, oldest first. Two helpers make rendering easier:
+
+- `summarizeReactions(reactions, myUserId?)` groups them into `{ emoji, count, userIds, mine }[]` for chips like "👍 2".
+- `reactionOf(reactions, userId)` returns that user's emoji or `null`.
+
+To toggle like WhatsApp, where tapping your current emoji removes it:
+
+```ts
+import { reactionOf } from '@sminfotech/comms-sdk';
+
+const current = reactionOf(message.reactions, client.me.id);
+await client.react(message.id, current === emoji ? null : emoji);
+```
+
+Keep threads in sync by replacing the message's `reactions` with the payload of `message.reaction`.
 
 **Calls**
 
@@ -92,6 +111,7 @@ client.stop();
 | Event | Payload |
 | --- | --- |
 | `message.new`, `message.updated`, `message.deleted` | `Message` |
+| `message.reaction` | `{ conversationId, messageId, userId, emoji, reactions }`. `emoji` is `null` when `userId` removed theirs, and `reactions` is the message's full list after the change. |
 | `typing` | `{ conversationId, userId, isTyping }` |
 | `conversation.read` | `{ conversationId, userId, lastReadAt }` |
 | `presence` | `{ userId, online, lastSeenAt }` |
