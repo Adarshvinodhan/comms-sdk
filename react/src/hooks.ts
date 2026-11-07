@@ -1,4 +1,14 @@
-import { reactionOf, type Call, type Conversation, type Message, type MessageReaction } from '@sminfotech/comms-sdk';
+import {
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  reactionOf,
+  type Attachment,
+  type AttachmentKind,
+  type Call,
+  type Conversation,
+  type Message,
+  type MessageReaction,
+} from '@sminfotech/comms-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useComms, useCommsEvent } from './provider.js';
 
@@ -8,7 +18,21 @@ export interface InboxState {
   reload: () => Promise<void>;
 }
 
-export type ThreadMessage = Message & { pending?: boolean; failed?: boolean };
+export type ThreadMessage = Message & {
+  pending?: boolean;
+  failed?: boolean;
+  /** 0–1 while files for this outgoing message are uploading. */
+  uploadProgress?: number;
+  /** Object URLs for files that have not been confirmed by the server yet. */
+  localUrls?: Readonly<Record<string, string>>;
+};
+
+export interface SendFilesOptions {
+  caption?: string;
+  /** Send the single audio file as a voice note. */
+  voice?: boolean;
+  durationMs?: number;
+}
 
 export interface MessagesState {
   /** Oldest first, including optimistic (pending/failed) messages. */
@@ -17,6 +41,8 @@ export interface MessagesState {
   hasOlder: boolean;
   loadOlder: () => Promise<void>;
   send: (text: string) => Promise<void>;
+  /** Uploads each file (max 50 MB, max 30) and sends them as one message. */
+  sendFiles: (files: File[], options?: SendFilesOptions) => Promise<void>;
   /** Resolves true when the edit was saved. */
   edit: (messageId: string, body: string) => Promise<boolean>;
   remove: (messageId: string) => Promise<void>;
@@ -86,6 +112,13 @@ export function useInbox(): InboxState {
   return { conversations, loading, reload };
 }
 
+function kindOf(file: File): AttachmentKind {
+  if (file.type.startsWith('image/')) return 'IMAGE';
+  if (file.type.startsWith('video/')) return 'VIDEO';
+  if (file.type.startsWith('audio/')) return 'AUDIO';
+  return 'DOCUMENT';
+}
+
 function upsert(list: ThreadMessage[], msg: ThreadMessage): ThreadMessage[] {
   const idx = list.findIndex((m) => m.id === msg.id || (msg.clientMsgId && m.clientMsgId === msg.clientMsgId));
   if (idx === -1) return [...list, msg].sort((a, b) => (a.id < b.id ? -1 : 1));
@@ -119,6 +152,14 @@ export function useMessages(conversation: Conversation): MessagesState {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  useEffect(
+    () => () => {
+      for (const message of messagesRef.current) {
+        for (const url of Object.values(message.localUrls ?? {})) URL.revokeObjectURL(url);
+      }
+    },
+    [conversationId],
+  );
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [otherTyping, setOtherTyping] = useState(false);
@@ -198,6 +239,7 @@ export function useMessages(conversation: Conversation): MessagesState {
         body,
         metadata: {},
         clientMsgId,
+        attachments: [],
         reactions: [],
         createdAt: new Date().toISOString(),
         editedAt: null,
@@ -210,6 +252,92 @@ export function useMessages(conversation: Conversation): MessagesState {
         setMessages((list) => upsert(list, saved));
       } catch (e) {
         setMessages((list) => list.map((m) => (m.clientMsgId === clientMsgId ? { ...m, pending: false, failed: true } : m)));
+        notify({ kind: 'error', text: (e as Error).message });
+      }
+    },
+    [client, conversationId, me.id, notify],
+  );
+
+  const sendFiles = useCallback(
+    async (files: File[], options: SendFilesOptions = {}) => {
+      if (!files.length) return;
+      if (files.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+        notify({ kind: 'error', text: `You can send up to ${MAX_ATTACHMENTS_PER_MESSAGE} files at once` });
+        return;
+      }
+      const tooBig = files.find((file) => file.size > MAX_ATTACHMENT_BYTES);
+      if (tooBig) {
+        notify({ kind: 'error', text: `${tooBig.name || 'A file'} exceeds the 50 MB limit` });
+        return;
+      }
+      const empty = files.find((file) => file.size <= 0);
+      if (empty) {
+        notify({ kind: 'error', text: `${empty.name || 'A file'} is empty` });
+        return;
+      }
+
+      client.setTyping(conversationId, false);
+      const clientMsgId = crypto.randomUUID();
+      const caption = options.caption?.trim() ?? '';
+      const voice = Boolean(options.voice) && files.length === 1;
+      const localUrls: Record<string, string> = {};
+      const attachments: Attachment[] = files.map((file, index) => {
+        const id = `local-${clientMsgId}-${index}`;
+        localUrls[id] = URL.createObjectURL(file);
+        return {
+          id,
+          kind: voice ? 'VOICE' : kindOf(file),
+          fileName: file.name || (voice ? 'voice-note' : 'file'),
+          mimeType: file.type || 'application/octet-stream',
+          sizeBytes: file.size,
+          durationMs: voice ? (options.durationMs ?? null) : null,
+          url: '',
+        };
+      });
+      const pending: ThreadMessage = {
+        id: `zzzz-pending-${clientMsgId}`,
+        conversationId,
+        senderId: me.id,
+        type: 'FILE',
+        body: caption || null,
+        metadata: {},
+        clientMsgId,
+        attachments,
+        reactions: [],
+        createdAt: new Date().toISOString(),
+        editedAt: null,
+        deletedAt: null,
+        pending: true,
+        uploadProgress: 0,
+        localUrls,
+      };
+      setMessages((list) => [...list, pending]);
+
+      const uploaded: string[] = [];
+      const patchProgress = (uploadProgress: number) =>
+        setMessages((list) => list.map((m) => (m.clientMsgId === clientMsgId ? { ...m, uploadProgress } : m)));
+      try {
+        for (let index = 0; index < files.length; index += 1) {
+          const file = files[index]!;
+          const saved = await client.uploadAttachment(conversationId, file, {
+            voice,
+            durationMs: voice ? options.durationMs : undefined,
+            onProgress: (loaded, total) => patchProgress((index + (total > 0 ? loaded / total : 0)) / files.length),
+          });
+          uploaded.push(saved.id);
+        }
+        const saved = await client.sendMessage(conversationId, {
+          ...(caption ? { body: caption } : {}),
+          attachmentIds: uploaded,
+          clientMsgId,
+        });
+        for (const url of Object.values(localUrls)) URL.revokeObjectURL(url);
+        setMessages((list) => upsert(list, saved));
+      } catch (e) {
+        await Promise.all(uploaded.map((id) => client.discardAttachment(id).catch(() => {})));
+        setMessages((list) =>
+          list.map((m) => (m.clientMsgId === clientMsgId ? { ...m, pending: false, failed: true, uploadProgress: undefined } : m)),
+        );
         notify({ kind: 'error', text: (e as Error).message });
       }
     },
@@ -272,6 +400,7 @@ export function useMessages(conversation: Conversation): MessagesState {
     hasOlder: cursor !== null,
     loadOlder,
     send,
+    sendFiles,
     edit,
     remove,
     react,

@@ -9,6 +9,25 @@ export interface CommsUser {
 
 export type MessageType = 'TEXT' | 'FILE' | 'SYSTEM';
 
+export type AttachmentKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'VOICE' | 'DOCUMENT';
+
+/** 50 MB. The server rejects anything larger. */
+export const MAX_ATTACHMENT_BYTES: number = 50 * 1024 * 1024;
+
+/** One message can reference this many uploads, matching the server cap. */
+export const MAX_ATTACHMENTS_PER_MESSAGE: number = 30;
+
+/** A file on a message. `url` is an API path and needs the chat token. */
+export interface Attachment {
+  id: string;
+  kind: AttachmentKind;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  durationMs: number | null;
+  url: string;
+}
+
 /** One user's reaction. A user has at most one reaction per message. */
 export interface MessageReaction {
   userId: string;
@@ -24,6 +43,8 @@ export interface Message {
   body: string | null;
   metadata: Record<string, unknown>;
   clientMsgId: string | null;
+  /** In send order. Always empty on text, system, and deleted messages. */
+  attachments: Attachment[];
   /** Oldest first. Always empty on deleted and system messages. */
   reactions: MessageReaction[];
   createdAt: string;

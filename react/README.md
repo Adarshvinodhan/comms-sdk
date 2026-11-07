@@ -52,7 +52,8 @@ Mount `<CallLayer />` once, anywhere inside the provider. It shows the incoming-
 | --- | --- |
 | `CommsProvider` | Starts the client, keeps the socket and token alive, and provides context. Renders `fallback` until ready. |
 | `DmInbox` | Conversation list with avatar, last message preview, unread badge, and time. Calls `onSelect`. |
-| `DmThread` | One conversation: header, history with "Load older", composer, edit/delete, reactions, typing, "Seen", and call buttons. |
+| `DmThread` | One conversation: header, history with "Load older", composer, file attachments, voice notes, edit/delete, reactions, typing, "Seen", and call buttons. |
+| `MessageAttachments` | Images, video, audio, voice notes, and document downloads for one message. `DmThread` renders this for you. |
 | `CallLayer` | Incoming-call modal, rejoin prompt, and the LiveKit call screen. In-call chat is not saved. |
 | `CallButton` | Starts an audio or video call. Disabled while another call is in progress. |
 | `CallHistory` | Incoming and outgoing calls with status, duration, and time. |
@@ -80,13 +81,17 @@ Each message has a **react** link that opens a quick picker. Reactions show as c
 
 The default set is exported as `DEFAULT_REACTIONS` (`👍 ❤️ 😂 😮 😢 🙏`).
 
+### Files in `DmThread`
+
+The composer has an attach button (up to 30 files, 50 MB each) and a microphone button that records a voice note and sends it. Selected files show as chips with a caption field. Images, video, and audio play inline; documents download on click. Media is fetched with the chat token and shown from a blob URL, so a plain `<img src={attachment.url}>` is not enough on its own. `MessageAttachments` does that fetch for you.
+
 ## Hooks
 
 Use these to build your own UI. They must be called inside `CommsProvider`.
 
 - `useComms()` returns `{ client, session, me, connected, notify, avatarColor, calls }`.
 - `useInbox()` returns `{ conversations, loading, reload }`, kept live for new messages, edits, reactions, reads, and presence.
-- `useMessages(conversation)` returns `{ messages, loading, hasOlder, loadOlder, send, edit, remove, react, setTyping, otherTyping, lastSeenOwnId }`. Sends and reactions are optimistic. `react(messageId, emoji)` toggles: it sets `emoji`, or removes it when it already is your reaction. Render `message.reactions` with `summarizeReactions(message.reactions, me.id)`, which is re-exported from `@sminfotech/comms-sdk`.
+- `useMessages(conversation)` returns `{ messages, loading, hasOlder, loadOlder, send, sendFiles, edit, remove, react, setTyping, otherTyping, lastSeenOwnId }`. Sends and reactions are optimistic. `react(messageId, emoji)` toggles: it sets `emoji`, or removes it when it already is your reaction. Render `message.reactions` with `summarizeReactions(message.reactions, me.id)`, which is re-exported from `@sminfotech/comms-sdk`. `sendFiles(files, { caption?, voice?, durationMs? })` uploads each file, then sends one message. While a file is uploading, the optimistic message has `uploadProgress` (0–1) and `localUrls` so you can preview it before the server copy is ready. A failed send discards uploads that already finished.
 - `useCall()` returns `{ state, historyVersion, start, accept, decline, hangup, rejoin }`. `state.phase` is `incoming`, `outgoing`, `in-call`, or `rejoin`.
 - `useCallHistory({ conversationId? })` returns `{ calls, loading, hasMore, loadMore }`.
 - `useCommsEvent(event, handler)` subscribes to any realtime event from `@sminfotech/comms-sdk`.
@@ -160,7 +165,8 @@ Every component accepts `className` and `style` for its root. The larger ones al
 
 | Component | `classNames` keys |
 | --- | --- |
-| `DmThread` | `header`, `avatar`, `audioCall`, `videoCall`, `messages`, `loadOlder`, `empty`, `message`, `mine`, `theirs`, `failed`, `bubble`, `meta`, `system`, `typing`, `edit`, `reactions`, `reaction`, `reactionPicker`, `reactionOption`, `composer`, `input`, `send` |
+| `DmThread` | `header`, `avatar`, `audioCall`, `videoCall`, `messages`, `loadOlder`, `empty`, `message`, `mine`, `theirs`, `failed`, `bubble`, `meta`, `system`, `typing`, `edit`, `reactions`, `reaction`, `reactionPicker`, `reactionOption`, `composer`, `files`, `file`, `attach`, `input`, `send`, `media`, `document`, `voice` |
+| `MessageAttachments` | `media`, `document`, `voice` |
 | `DmInbox` | `empty`, `item`, `itemActive`, `avatar`, `text`, `preview`, `badge` |
 | `CallHistory` | `empty`, `item`, `missed`, `more` |
 | `CallLayer` | `backdrop`, `modal`, `pulse`, `actions`, `decline`, `accept`, `end`, `rejoin`, `screen`, `header`, `hangup`, `room` |

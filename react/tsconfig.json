@@ -10,7 +10,10 @@
     "noEmit": true,
     "isolatedModules": true,
     "declaration": true,
-    "isolatedDeclarations": true
+    "isolatedDeclarations": true,
+    "paths": {
+      "@sminfotech/comms-sdk": ["../sdk-js/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

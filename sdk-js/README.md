@@ -76,6 +76,10 @@ client.stop();
 - `inbox()`, `conversation(id)`
 - `messages(conversationId, { before?, limit? })` returns newest first. Pass `nextCursor` as `before` to page back.
 - `sendMessage(conversationId, body, clientMsgId?)` sends over the socket and falls back to REST. The server deduplicates on `clientMsgId`, so retries are safe.
+- `sendMessage(conversationId, { body?, attachmentIds?, clientMsgId? })` sends a file message. `body` is an optional caption. `attachmentIds` are ids from `uploadAttachment` (1–30). A string body is still the text-only call.
+- `uploadAttachment(conversationId, file, { voice?, durationMs?, fileName?, onProgress?, signal? })` uploads one file (`Blob` or `File`) as multipart and returns the `Attachment`. Files over 50 MB or empty are rejected before the request. `onProgress(loaded, total)` reports upload bytes. Pass `voice: true` for a voice note (audio only).
+- `fetchAttachment(attachmentId, signal?)` downloads the bytes as a `Blob`. Use this for `<img>`, `<video>`, and `<audio>`: the relative `attachment.url` needs the chat token, which a plain `src` cannot send.
+- `discardAttachment(attachmentId)` deletes an upload you have not sent yet.
 - `editMessage(messageId, body)`, `deleteMessage(messageId)`
 - `react(messageId, emoji | null)` sets your reaction, replacing any previous one, or removes it with `null`. One reaction per user per message, like WhatsApp. It is idempotent, so it sends over the socket and falls back to REST. Resolves to `{ conversationId, messageId, userId, emoji, reactions }`.
 - `markRead(conversationId)`
@@ -87,6 +91,22 @@ Every `Message` has `reactions: { userId, emoji, reactedAt }[]`, oldest first. T
 
 - `summarizeReactions(reactions, myUserId?)` groups them into `{ emoji, count, userIds, mine }[]` for chips like "👍 2".
 - `reactionOf(reactions, userId)` returns that user's emoji or `null`.
+
+**Attachments**
+
+Every `Message` has `attachments: Attachment[]`, in send order. Text, system, and deleted messages have `[]`. A message with files has `type: "FILE"` and may still have a caption in `body`.
+
+```ts
+const file = await client.uploadAttachment(conversationId, photo, {
+  onProgress: (loaded, total) => console.log(loaded, total),
+});
+await client.sendMessage(conversationId, { attachmentIds: [file.id], body: 'Look' });
+
+const blob = await client.fetchAttachment(file.id);
+const src = URL.createObjectURL(blob);
+```
+
+`MAX_ATTACHMENT_BYTES` is 50 MB and `MAX_ATTACHMENTS_PER_MESSAGE` is 30. Kinds are `IMAGE`, `VIDEO`, `AUDIO`, `VOICE`, and `DOCUMENT`.
 
 To toggle like WhatsApp, where tapping your current emoji removes it:
 

@@ -1,7 +1,7 @@
 {
   "name": "@sminfotech/comms-react",
-  "version": "0.2.0",
-  "description": "React provider, hooks and components for the comms service: DM inbox and threads, ringing, and LiveKit audio/video calls.",
+  "version": "0.3.0",
+  "description": "React provider, hooks and components for the comms service: DM inbox and threads, file attachments, ringing, and LiveKit audio/video calls.",
   "license": "MIT",
   "author": "legpieze",
   "repository": {
@@ -47,7 +47,7 @@
     "prepublishOnly": "npm run typecheck && npm run build"
   },
   "dependencies": {
-    "@sminfotech/comms-sdk": "^0.2.0"
+    "@sminfotech/comms-sdk": "^0.3.0"
   },
   "peerDependencies": {
     "@livekit/components-react": "^2.9.0",

@@ -30,8 +30,26 @@ function preview(c: Conversation, myId: string): string {
   const m = c.lastMessage;
   if (!m) return 'No messages yet';
   if (m.deletedAt) return 'Message deleted';
-  if (m.type === 'SYSTEM') return `📞 ${m.body}`;
-  return `${m.senderId === myId ? 'You: ' : ''}${m.body}`;
+  if (m.type === 'SYSTEM') return `📞 ${m.body ?? ''}`;
+  const prefix = m.senderId === myId ? 'You: ' : '';
+  const files = m.attachments ?? [];
+  if (m.type === 'FILE' || files.length > 0) {
+    const first = files[0];
+    const label = !first
+      ? 'File'
+      : first.kind === 'IMAGE'
+        ? 'Photo'
+        : first.kind === 'VIDEO'
+          ? 'Video'
+          : first.kind === 'VOICE'
+            ? 'Voice note'
+            : first.kind === 'AUDIO'
+              ? 'Audio'
+              : first.fileName;
+    const count = files.length > 1 ? ` (${files.length})` : '';
+    return `${prefix}${label}${count}${m.body ? ` · ${m.body}` : ''}`;
+  }
+  return `${prefix}${m.body ?? ''}`;
 }
 
 function OwnInbox(props: Omit<DmInboxProps, 'conversations'>) {

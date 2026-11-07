@@ -20,6 +20,12 @@ export function timeShort(iso: string | null | undefined): string {
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 }
 
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
 export function formatDuration(sec: number | null | undefined): string {
   if (sec == null) return '';
   const m = Math.floor(sec / 60);

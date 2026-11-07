@@ -1,8 +1,9 @@
-import { reactionOf, summarizeReactions, type Conversation } from '@sminfotech/comms-sdk';
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_MESSAGE, reactionOf, summarizeReactions, type Conversation } from '@sminfotech/comms-sdk';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { useMessages } from '../hooks.js';
+import { useMessages, type SendFilesOptions } from '../hooks.js';
 import { useComms } from '../provider.js';
-import { cx, timeShort, type CommsStyle } from '../util.js';
+import { cx, formatBytes, timeShort, type CommsStyle } from '../util.js';
+import { MessageAttachments } from './Attachments.js';
 import { Avatar } from './Avatar.js';
 import { CallButton } from './CallButton.js';
 
@@ -20,6 +21,12 @@ export interface DmThreadClassNames {
   system?: string;
   typing?: string;
   composer?: string;
+  attach?: string;
+  files?: string;
+  file?: string;
+  media?: string;
+  document?: string;
+  voice?: string;
   input?: string;
   send?: string;
   edit?: string;
@@ -57,12 +64,32 @@ export function DmThread({
   style,
   classNames,
 }: DmThreadProps): ReactElement {
-  const { me, avatarColor } = useComms();
+  const { me, avatarColor, notify } = useComms();
   const other = conversation.otherUser;
-  const { messages, loading, hasOlder, loadOlder, send, edit, remove, react, setTyping, otherTyping, lastSeenOwnId } =
+  const { messages, loading, hasOlder, loadOlder, send, sendFiles, edit, remove, react, setTyping, otherTyping, lastSeenOwnId } =
     useMessages(conversation);
 
   const [draft, setDraft] = useState('');
+  const [picks, setPicks] = useState<{ file: File; url: string }[]>([]);
+  const picksRef = useRef(picks);
+  picksRef.current = picks;
+  const [recording, setRecording] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunks = useRef<Blob[]>([]);
+  const recordStarted = useRef(0);
+  const discardRecord = useRef(false);
+
+  useEffect(
+    () => () => {
+      picksRef.current.forEach((pick) => URL.revokeObjectURL(pick.url));
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+        discardRecord.current = true;
+        recorderRef.current.stop();
+      }
+    },
+    [],
+  );
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   const [picking, setPicking] = useState<string | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -112,10 +139,100 @@ export function DmThread({
   }
 
   function submit() {
-    if (!draft.trim()) return;
+    if (recording) return;
+    const caption = draft.trim();
+    if (!caption && picks.length === 0) return;
     stickToBottom.current = true;
-    void send(draft);
+    if (picks.length) {
+      void sendFiles(
+        picks.map((pick) => pick.file),
+        { caption },
+      );
+      picks.forEach((pick) => URL.revokeObjectURL(pick.url));
+      setPicks([]);
+    } else {
+      void send(caption);
+    }
     setDraft('');
+  }
+
+  function addFiles(list: FileList | null) {
+    if (!list?.length) return;
+    setPicks((current) => {
+      const next = [...current];
+      for (const file of list) {
+        if (next.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
+          notify({ kind: 'error', text: `You can send up to ${MAX_ATTACHMENTS_PER_MESSAGE} files at once` });
+          break;
+        }
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+          notify({ kind: 'error', text: `${file.name || 'A file'} exceeds the 50 MB limit` });
+          continue;
+        }
+        if (file.size <= 0) {
+          notify({ kind: 'error', text: `${file.name || 'A file'} is empty` });
+          continue;
+        }
+        next.push({ file, url: URL.createObjectURL(file) });
+      }
+      return next;
+    });
+  }
+
+  function removeFile(index: number) {
+    setPicks((current) => {
+      const removed = current[index];
+      if (removed) URL.revokeObjectURL(removed.url);
+      return current.filter((_, i) => i !== index);
+    });
+  }
+
+  async function toggleRecording() {
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      discardRecord.current = false;
+      recorderRef.current.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+          ? 'audio/mp4'
+          : '';
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordChunks.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) recordChunks.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+        setRecording(false);
+        const discarded = discardRecord.current;
+        discardRecord.current = false;
+        const blob = new Blob(recordChunks.current, { type: recorder.mimeType || 'audio/webm' });
+        recordChunks.current = [];
+        if (discarded || blob.size <= 0) return;
+        const ext = blob.type.includes('mp4') ? 'm4a' : 'webm';
+        const file = new File([blob], `voice-note.${ext}`, { type: blob.type || 'audio/webm' });
+        const durationMs = Date.now() - recordStarted.current;
+        stickToBottom.current = true;
+        const options: SendFilesOptions = { voice: true, durationMs };
+        void sendFiles([file], options);
+      };
+      recordStarted.current = Date.now();
+      recorder.start();
+      recorderRef.current = recorder;
+      setRecording(true);
+    } catch (e) {
+      notify({ kind: 'error', text: (e as Error).message || 'Microphone is unavailable' });
+    }
+  }
+
+  function cancelRecording() {
+    discardRecord.current = true;
+    recorderRef.current?.stop();
   }
 
   async function saveEdit() {
@@ -203,7 +320,20 @@ export function DmThread({
                 </div>
               ) : (
                 <div className={cx('comms-bubble', classNames?.bubble)}>
-                  {m.deletedAt ? <em className="comms-muted">Message deleted</em> : m.body}
+                  {m.deletedAt ? (
+                    <em className="comms-muted">Message deleted</em>
+                  ) : (
+                    <>
+                      {(m.attachments?.length ?? 0) > 0 && (
+                        <MessageAttachments
+                          attachments={m.attachments}
+                          localUrls={m.localUrls}
+                          classNames={{ media: classNames?.media, document: classNames?.document, voice: classNames?.voice }}
+                        />
+                      )}
+                      {m.body}
+                    </>
+                  )}
                 </div>
               )}
               {summary.length > 0 && (
@@ -226,7 +356,13 @@ export function DmThread({
                 </div>
               )}
               <div className={cx('comms-meta', 'comms-muted', 'comms-small', classNames?.meta)}>
-                {m.pending ? 'Sending…' : m.failed ? 'Failed to send' : timeShort(m.createdAt)}
+                {m.pending
+                  ? m.uploadProgress != null
+                    ? `Sending… ${Math.round(m.uploadProgress * 100)}%`
+                    : 'Sending…'
+                  : m.failed
+                    ? 'Failed to send'
+                    : timeShort(m.createdAt)}
                 {m.editedAt && !m.deletedAt && ' · edited'}
                 {canReact && editing?.id !== m.id && (
                   <>
@@ -290,21 +426,97 @@ export function DmThread({
           submit();
         }}
       >
-        <input
-          className={cx('comms-input', classNames?.input)}
-          placeholder={`Message ${other.displayName}`}
-          value={draft}
-          maxLength={4000}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            setTyping(e.target.value.length > 0);
-          }}
-          onBlur={() => setTyping(false)}
-        />
-        <button className={cx('comms-btn', classNames?.send)} type="submit" disabled={!draft.trim()}>
-          Send
-        </button>
+        {picks.length > 0 && (
+          <div className={cx('comms-file-picks', classNames?.files)}>
+            {picks.map((pick, index) => (
+              <div key={pick.url} className={cx('comms-file-pick', classNames?.file)}>
+                {pick.file.type.startsWith('image/') ? (
+                  <img src={pick.url} alt="" />
+                ) : (
+                  <span className="comms-file-pick-name">{pick.file.name || 'file'}</span>
+                )}
+                <button type="button" className="comms-file-pick-remove" aria-label={`Remove ${pick.file.name || 'file'}`} onClick={() => removeFile(index)}>
+                  ×
+                </button>
+                <span className="comms-muted comms-small">{formatBytes(pick.file.size)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {recording && <div className={cx('comms-recording', classNames?.voice)}>Recording voice note…</div>}
+        <div className="comms-composer-row">
+          <button
+            type="button"
+            className={cx('comms-icon-btn', classNames?.attach)}
+            aria-label="Attach a file"
+            disabled={recording}
+            onClick={() => fileRef.current?.click()}
+          >
+            <PaperclipIcon />
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <input
+            className={cx('comms-input', classNames?.input)}
+            placeholder={picks.length ? 'Add a caption' : `Message ${other.displayName}`}
+            value={draft}
+            maxLength={4000}
+            disabled={recording}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setTyping(e.target.value.length > 0);
+            }}
+            onBlur={() => setTyping(false)}
+          />
+          <button
+            type="button"
+            className={cx('comms-icon-btn', recording && 'is-recording', classNames?.voice)}
+            aria-label={recording ? 'Stop and send voice note' : 'Record a voice note'}
+            disabled={picks.length > 0}
+            onClick={() => void toggleRecording()}
+          >
+            <MicIcon />
+          </button>
+          {recording ? (
+            <button type="button" className="comms-btn comms-btn--ghost" onClick={cancelRecording}>
+              Cancel
+            </button>
+          ) : (
+            <button className={cx('comms-btn', classNames?.send)} type="submit" disabled={!draft.trim() && picks.length === 0}>
+              Send
+            </button>
+          )}
+        </div>
       </form>
     </div>
+  );
+}
+
+function PaperclipIcon(): ReactElement {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path
+        d="M21.4 11.6 12 21a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 0 1 5 5L9.9 19a2 2 0 0 1-2.8-2.8l8.4-8.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MicIcon(): ReactElement {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M6 11a6 6 0 0 0 12 0M12 17v4" strokeLinecap="round" />
+    </svg>
   );
 }

@@ -350,16 +350,144 @@
   display: flex;
   gap: 6px;
 }
+.comms-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.comms-attachments + * {
+  margin-top: 6px;
+}
+.comms-media {
+  display: block;
+  max-width: min(280px, 100%);
+  max-height: 280px;
+  border-radius: 8px;
+  background: rgb(0 0 0 / 20%);
+}
+.comms-voice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+}
+.comms-voice audio {
+  width: 100%;
+}
+.comms-doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 180px;
+  max-width: 280px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: rgb(0 0 0 / 16%);
+  border: none;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+.comms-doc:disabled {
+  cursor: progress;
+}
+.comms-doc-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.comms-doc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .comms-composer {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--comms-border);
   background: var(--comms-header);
 }
-.comms-composer .comms-input {
+.comms-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.comms-composer-row .comms-input {
   flex: 1;
   min-width: 0;
+}
+.comms-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  color: var(--comms-text);
+  background: transparent;
+  border: 1px solid var(--comms-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.comms-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.comms-icon-btn.is-recording {
+  color: #fff;
+  background: var(--comms-danger);
+  border-color: var(--comms-danger);
+}
+.comms-file-picks {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.comms-file-pick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 72px;
+  flex-shrink: 0;
+}
+.comms-file-pick img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--comms-surface-2);
+}
+.comms-file-pick-name {
+  display: -webkit-box;
+  height: 72px;
+  overflow: hidden;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--comms-surface-2);
+  font-size: 11px;
+  word-break: break-all;
+}
+.comms-file-pick-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  background: rgb(0 0 0 / 65%);
+  cursor: pointer;
+  line-height: 18px;
+}
+.comms-recording {
+  color: var(--comms-danger);
+  font-size: 13px;
 }
 
 /* Call history */

@@ -1,17 +1,19 @@
 import { io, type Socket } from 'socket.io-client';
-import { parseResponse } from './errors.js';
-import type {
-  Call,
-  CallJoin,
-  CallType,
-  CommsEventName,
-  CommsEvents,
-  CommsSession,
-  CommsUser,
-  Conversation,
-  Message,
-  Page,
-  ReactionEvent,
+import { CommsApiError, parseResponse } from './errors.js';
+import {
+  MAX_ATTACHMENT_BYTES,
+  type Attachment,
+  type Call,
+  type CallJoin,
+  type CallType,
+  type CommsEventName,
+  type CommsEvents,
+  type CommsSession,
+  type CommsUser,
+  type Conversation,
+  type Message,
+  type Page,
+  type ReactionEvent,
 } from './types.js';
 
 export interface CommsClientOptions {
@@ -24,6 +26,26 @@ export interface CommsClientOptions {
   initialSession?: CommsSession;
   /** How long to wait for a socket acknowledgement before falling back to REST. Default 5000 ms. */
   sendTimeoutMs?: number;
+}
+
+/** A text message, or a file message that points at uploads from `uploadAttachment`. */
+export interface SendMessageOptions {
+  body?: string;
+  attachmentIds?: string[];
+  /** Idempotency key. Generated when omitted. */
+  clientMsgId?: string;
+}
+
+export interface UploadAttachmentOptions {
+  /** Mark an audio file as a voice note. */
+  voice?: boolean;
+  /** Playback length in milliseconds, for audio and video. */
+  durationMs?: number;
+  /** Used when `file` is a Blob without a name. */
+  fileName?: string;
+  /** Bytes uploaded so far and the total, while the request is in flight. */
+  onProgress?: (loaded: number, total: number) => void;
+  signal?: AbortSignal;
 }
 
 type Ack<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
@@ -166,6 +188,55 @@ export class CommsClient {
     return parseResponse<T>(res);
   }
 
+  private async requestBlob(path: string, signal?: AbortSignal, retried = false): Promise<Blob> {
+    const session = this.currentSession;
+    const res = await fetch(`${session.apiUrl}${path}`, {
+      headers: { authorization: `Bearer ${session.chatToken}` },
+      signal,
+    });
+    if (res.status === 401 && !retried) {
+      await this.refreshSession();
+      return this.requestBlob(path, signal, true);
+    }
+    if (!res.ok) await parseResponse(res);
+    return res.blob();
+  }
+
+  private postForm<T>(path: string, form: FormData, opts: UploadAttachmentOptions = {}, retried = false): Promise<T> {
+    if (opts.signal?.aborted) return Promise.reject(new DOMException('Upload aborted', 'AbortError'));
+    const session = this.currentSession;
+    return new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${session.apiUrl}${path}`);
+      xhr.setRequestHeader('authorization', `Bearer ${session.chatToken}`);
+      xhr.responseType = 'text';
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) opts.onProgress?.(event.loaded, event.total);
+      };
+      const onAbort = () => xhr.abort();
+      opts.signal?.addEventListener('abort', onAbort);
+      const finish = () => opts.signal?.removeEventListener('abort', onAbort);
+      xhr.onload = () => {
+        finish();
+        if (xhr.status === 401 && !retried) {
+          this.refreshSession().then(() => this.postForm<T>(path, form, opts, true)).then(resolve, reject);
+          return;
+        }
+        const res = new Response(xhr.responseText, { status: xhr.status || 500, statusText: xhr.statusText });
+        parseResponse<T>(res).then(resolve, reject);
+      };
+      xhr.onerror = () => {
+        finish();
+        reject(new CommsApiError(0, 'NETWORK', 'Upload failed'));
+      };
+      xhr.onabort = () => {
+        finish();
+        reject(new DOMException('Upload aborted', 'AbortError'));
+      };
+      xhr.send(form);
+    });
+  }
+
   /** Emits over the socket and falls back to `viaRest` when disconnected or unacknowledged. `viaRest` must be safe to repeat. */
   private emitOrRest<T>(event: string, payload: unknown, viaRest: () => Promise<T>): Promise<T> {
     const socket = this.socket;
@@ -203,11 +274,58 @@ export class CommsClient {
   /**
    * Sends over the socket and falls back to REST if there is no acknowledgement in time.
    * `clientMsgId` makes the retry safe: the server deduplicates on it.
+   *
+   * Pass a string to send text, or `{ attachmentIds, body? }` to send files already uploaded
+   * with `uploadAttachment`. The caption is optional.
    */
-  sendMessage(conversationId: string, body: string, clientMsgId: string = crypto.randomUUID()): Promise<Message> {
-    return this.emitOrRest<Message>('message.send', { conversationId, body, clientMsgId }, () =>
-      this.request('POST', `/v1/conversations/${conversationId}/messages`, { body, clientMsgId }),
+  sendMessage(conversationId: string, body: string, clientMsgId?: string): Promise<Message>;
+  sendMessage(conversationId: string, options: SendMessageOptions): Promise<Message>;
+  sendMessage(
+    conversationId: string,
+    bodyOrOptions: string | SendMessageOptions,
+    clientMsgId: string = crypto.randomUUID(),
+  ): Promise<Message> {
+    const options: SendMessageOptions =
+      typeof bodyOrOptions === 'string'
+        ? { body: bodyOrOptions, clientMsgId }
+        : { ...bodyOrOptions, clientMsgId: bodyOrOptions.clientMsgId ?? crypto.randomUUID() };
+    const id = options.clientMsgId ?? clientMsgId;
+    const body = typeof bodyOrOptions === 'string' ? { body: bodyOrOptions } : options.body ? { body: options.body } : {};
+    const files = options.attachmentIds?.length ? { attachmentIds: options.attachmentIds } : {};
+    if (!('body' in body) && !('attachmentIds' in files)) {
+      return Promise.reject(new CommsApiError(400, 'VALIDATION_ERROR', 'Message needs text or an attachment'));
+    }
+    const payload = { ...body, ...files, clientMsgId: id };
+    return this.emitOrRest<Message>('message.send', { conversationId, ...payload }, () =>
+      this.request('POST', `/v1/conversations/${conversationId}/messages`, payload),
     );
+  }
+
+  /**
+   * Uploads one file (max 50 MB) into a conversation. Send it by passing the returned id to `sendMessage`.
+   * Uploads always use HTTP; the socket only carries the id.
+   */
+  uploadAttachment(conversationId: string, file: Blob, options: UploadAttachmentOptions = {}): Promise<Attachment> {
+    if (file.size <= 0) return Promise.reject(new CommsApiError(400, 'VALIDATION_ERROR', 'File is empty'));
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      return Promise.reject(new CommsApiError(400, 'VALIDATION_ERROR', 'File exceeds the 50 MB limit'));
+    }
+    const fileName = options.fileName ?? (file instanceof File && file.name ? file.name : 'file');
+    const form = new FormData();
+    if (options.voice) form.append('voice', 'true');
+    if (options.durationMs != null) form.append('durationMs', String(Math.round(options.durationMs)));
+    form.append('file', file, fileName);
+    return this.postForm<Attachment>(`/v1/conversations/${conversationId}/attachments`, form, options);
+  }
+
+  /** Downloads an attachment. The blob's type is the file's mime type. */
+  fetchAttachment(attachmentId: string, signal?: AbortSignal): Promise<Blob> {
+    return this.requestBlob(`/v1/attachments/${attachmentId}`, signal);
+  }
+
+  /** Deletes an upload that was never sent. */
+  discardAttachment(attachmentId: string): Promise<{ id: string; deleted: boolean }> {
+    return this.request('DELETE', `/v1/attachments/${attachmentId}`);
   }
 
   editMessage(messageId: string, body: string): Promise<Message> {
